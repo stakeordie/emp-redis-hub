@@ -7,8 +7,15 @@ import uvicorn
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
+import sys
+import os
+
+# Add parent directory to path to find core module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from core.routes import init_routes, start_redis_listener
 from core.redis_service import RedisService
+from core.connections import ConnectionManager
 
 # Configure logging
 def setup_logging():
@@ -76,8 +83,15 @@ async def lifespan(app: FastAPI):
     # Start background tasks
     cleanup_task = asyncio.create_task(stale_job_cleanup_task())
     
-    # Initialize WebSocket routes
-    init_routes(app)
+    # Create Redis service and connection manager instances
+    redis_service = RedisService()
+    connection_manager = ConnectionManager()
+    
+    # Initialize WebSocket routes with explicit instances
+    init_routes(app, redis_service=redis_service, connection_manager=connection_manager)
+    
+    # Log connection manager initialization
+    logger.info(f"Initialized ConnectionManager: {connection_manager}")
     
     # Start Redis pub/sub listener
     await start_redis_listener()
