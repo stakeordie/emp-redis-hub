@@ -13,9 +13,11 @@ import os
 # Add parent directory to path to find core module
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.routes import init_routes, start_redis_listener
+from core.message_handler import MessageHandler
+from core.message_models import MessageModels
+from core.message_router import MessageRouter
 from core.redis_service import RedisService
-from core.connections import ConnectionManager
+from core.connection_manager import ConnectionManager
 
 logger.info("IT WORKS")
 
@@ -50,11 +52,25 @@ async def lifespan(app: FastAPI):
     redis_service = RedisService()
     connection_manager = ConnectionManager()
     
-    # Initialize WebSocket routes with explicit instances
-    init_routes(app, redis_service=redis_service, connection_manager=connection_manager)
+    # Create MessageRouter instance
+    message_router = MessageRouter()
     
-    # Start Redis pub/sub listener
-    await start_redis_listener()
+    # Create MessageModels instance
+    message_models = MessageModels()
+    
+    # Create MessageHandler instance
+    message_handler = MessageHandler(
+        redis_service=redis_service, 
+        connection_manager=connection_manager, 
+        message_router=message_router,
+        message_models=message_models
+    )
+    
+    # Initialize WebSocket routes
+    message_handler.init_routes(app)
+    
+    # Start background tasks (including Redis pub/sub listener)
+    await message_handler.start_background_tasks()
     
     yield
     
@@ -64,6 +80,9 @@ async def lifespan(app: FastAPI):
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    
+    # Stop background tasks in MessageHandler
+    await message_handler.stop_background_tasks()
     
     # Close Redis connections
     redis_service = RedisService()
