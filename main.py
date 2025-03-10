@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Main entry point for the core WebSocket-based Queue API
 import os
-import logging
 import asyncio
 import uvicorn
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+from utils.logger import logger
 
 import sys
 import os
@@ -17,41 +17,7 @@ from core.routes import init_routes, start_redis_listener
 from core.redis_service import RedisService
 from core.connections import ConnectionManager
 
-# Configure logging
-def setup_logging():
-    """Set up basic logging configuration"""
-    # Get the root logger
-    root_logger = logging.getLogger()
-    
-    # Clear any existing handlers to avoid duplicate logs
-    if root_logger.handlers:
-        for handler in root_logger.handlers:
-            root_logger.removeHandler(handler)
-    
-    # Default level from environment or INFO for production
-    log_level_name = os.environ.get("LOG_LEVEL", "INFO")
-    log_level = getattr(logging, log_level_name.upper(), logging.INFO)
-    
-    # Set root logger level
-    root_logger.setLevel(log_level)
-    
-    # Create console handler with basic formatting
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
-    
-    # Basic format for production
-    log_format = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-    formatter = logging.Formatter(log_format)
-    console_handler.setFormatter(formatter)
-    
-    # Add handler to root logger
-    root_logger.addHandler(console_handler)
-    
-    return root_logger
-
-# Initialize logging
-logger = setup_logging()
-logger = logging.getLogger(__name__)
+logger.info("IT WORKS")
 
 # Background task for stale job cleanup
 async def stale_job_cleanup_task():
@@ -61,8 +27,6 @@ async def stale_job_cleanup_task():
     # Max heartbeat age - default 10 minutes (600 seconds)
     max_heartbeat_age = int(os.environ.get("MAX_WORKER_HEARTBEAT_AGE", 600))
     
-    logger.info(f"Starting periodic job cleanup task (interval: {cleanup_interval}s, max heartbeat age: {max_heartbeat_age}s)")
-    
     while True:
         try:
             # Wait first to allow system to stabilize on startup
@@ -70,12 +34,11 @@ async def stale_job_cleanup_task():
             
             # Run cleanup
             redis_service = RedisService()
-            cleaned_count = redis_service.cleanup_stale_jobs(max_heartbeat_age)
-            logger.info(f"Job cleanup completed - cleaned {cleaned_count} stale jobs")
+            redis_service.cleanup_stale_jobs(max_heartbeat_age)
             
-        except Exception as e:
-            logger.error(f"Error in job cleanup task: {str(e)}")
+        except Exception:
             # Continue running even if there's an error
+            pass
 
 # FastAPI startup and shutdown event handling
 @asynccontextmanager
@@ -90,16 +53,8 @@ async def lifespan(app: FastAPI):
     # Initialize WebSocket routes with explicit instances
     init_routes(app, redis_service=redis_service, connection_manager=connection_manager)
     
-    # Log connection manager initialization
-    logger.info(f"Initialized ConnectionManager: {connection_manager}")
-    
     # Start Redis pub/sub listener
     await start_redis_listener()
-    
-    # Log startup
-    redis_host = os.environ.get("REDIS_HOST", "localhost")
-    redis_port = os.environ.get("REDIS_PORT", 6379)
-    logger.info(f"Starting WebSocket Queue API with Redis at {redis_host}:{redis_port}")
     
     yield
     
@@ -113,7 +68,6 @@ async def lifespan(app: FastAPI):
     # Close Redis connections
     redis_service = RedisService()
     await redis_service.close_async()
-    logger.info("WebSocket Queue API shutting down")
 
 # Initialize FastAPI with lifespan manager
 app = FastAPI(title="WebSocket Queue API", lifespan=lifespan)
