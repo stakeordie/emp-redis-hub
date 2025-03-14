@@ -5,7 +5,6 @@ import asyncio
 import uvicorn
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from utils.logger import logger
 
 import sys
 import os
@@ -18,6 +17,8 @@ from core.message_models import MessageModels
 from core.message_router import MessageRouter
 from core.redis_service import RedisService
 from core.connection_manager import ConnectionManager
+
+from core.utils.logger import logger
 
 logger.info("IT WORKS")
 
