@@ -12,11 +12,8 @@ import os
 # Add parent directory to path to find core module
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.message_handler import MessageHandler
-from core.message_models import MessageModels
-from core.message_router import MessageRouter
+from core.message_broker import MessageBroker
 from core.redis_service import RedisService
-from core.connection_manager import ConnectionManager
 
 from core.utils.logger import logger
 
@@ -49,29 +46,14 @@ async def lifespan(app: FastAPI):
     # Start background tasks
     cleanup_task = asyncio.create_task(stale_job_cleanup_task())
     
-    # Create Redis service and connection manager instances
-    redis_service = RedisService()
-    connection_manager = ConnectionManager()
+    # Create MessageBroker instance with all required components
+    message_broker = MessageBroker()
     
-    # Create MessageRouter instance
-    message_router = MessageRouter()
-    
-    # Create MessageModels instance
-    message_models = MessageModels()
-    
-    # Create MessageHandler instance
-    message_handler = MessageHandler(
-        redis_service=redis_service, 
-        connection_manager=connection_manager, 
-        message_router=message_router,
-        message_models=message_models
-    )
-    
-    # Initialize WebSocket routes
-    message_handler.init_routes(app)
+    # Initialize WebSocket connections
+    message_broker.init_connections(app)
     
     # Start background tasks (including Redis pub/sub listener)
-    await message_handler.start_background_tasks()
+    await message_broker.start_background_tasks()
     
     yield
     
@@ -79,11 +61,9 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     try:
         await cleanup_task
+        await message_broker.stop_background_tasks()
     except asyncio.CancelledError:
         pass
-    
-    # Stop background tasks in MessageHandler
-    await message_handler.stop_background_tasks()
     
     # Close Redis connections
     redis_service = RedisService()
